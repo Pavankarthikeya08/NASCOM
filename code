@@ -1,1 +1,87 @@
 
+import os
+import speech_recognition as sr
+from pydub import AudioSegment
+import google.generativeai as genai
+import requests
+
+# 🔹 Hardcoded API Keys for Quick Testing (⚠️ Not Secure)
+GEMINI_API_KEY = "AIzaSyDhOq4BSPovRCRCX5ChE0jGmp-DiywofeI"
+HUGGINGFACE_API_KEY = "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"
+
+# ✅ Configure Gemini API
+genai.configure(api_key=GEMINI_API_KEY)
+
+# 🔹 Step 1: Convert Audio to Text
+def audio_to_text(audio_path):
+    recognizer = sr.Recognizer()
+
+    # Convert MP3 to WAV if needed
+    if audio_path.endswith(".mp3"):
+        wav_path = audio_path.replace(".mp3", ".wav")
+        AudioSegment.from_mp3(audio_path).export(wav_path, format="wav")
+        audio_path = wav_path
+
+    with sr.AudioFile(audio_path) as source:
+        print("🎙️ Converting Audio to Text...")
+        audio_data = recognizer.record(source)
+        try:
+            text = recognizer.recognize_google(audio_data)
+            print(f"✅ Recognized Text: {text}")
+            return text
+        except sr.UnknownValueError:
+            print("❌ Could not understand the audio.")
+            return None
+        except sr.RequestError:
+            print("❌ Could not request results, check your internet connection.")
+            return None
+
+# 🔹 Step 2: Generate an Art Description using Gemini API
+def generate_art_description(text):
+    print("🤖 Generating Art Description...")
+    try:
+        model = genai.GenerativeModel("gemini-pro")  # ✅ Corrected Model Name
+        response = model.generate_content(f"Create a detailed art description based on: {text}")
+
+        if hasattr(response, 'text'):  # ✅ Ensure response contains text
+            description = response.text
+            print(f"📝 AI-Generated Art Description: {description}")
+            return description
+        else:
+            print("❌ No text received from Gemini API.")
+            return None
+    except Exception as e:
+        print(f"❌ Error with Gemini API: {e}")
+        return None
+
+# 🔹 Step 3: Generate an Image using Hugging Face
+def generate_image(description):
+    print("🎨 Generating Image from Description...")
+    API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
+    
+    response = requests.post(API_URL, headers=headers, json={"inputs": description})
+    
+    if response.status_code == 200:
+        image_filename = "generated_image.png"
+        with open(image_filename, "wb") as file:
+            file.write(response.content)
+        print(f"✅ Image saved as {image_filename}")
+    else:
+        print(f"❌ Failed to generate image. Error: {response.text}")
+
+# 🔹 Step 4: Main Execution
+def main():
+    from google.colab import files
+    uploaded = files.upload()
+    audio_path = list(uploaded.keys())[0]  # Get uploaded filename
+    
+    recognized_text = audio_to_text(audio_path)
+    
+    if recognized_text:
+        art_description = generate_art_description(recognized_text)
+        if art_description:
+            generate_image(art_description)
+
+if __name__ == "__main__":
+    main()
